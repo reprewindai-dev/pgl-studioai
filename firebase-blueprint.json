@@ -1,0 +1,95 @@
+{
+  "entities": {
+    "AgentRecord": {
+      "title": "AgentRecord",
+      "description": "Information about an AI Agent registered in the ledger.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "creator": { "type": "string" },
+        "jurisdiction": { "type": "string" },
+        "created_at": { "type": "string" },
+        "is_revoked": { "type": "boolean" },
+        "revocation_reason": { "type": "string" },
+        "parent_agent_ids": { "type": "array" },
+        "genome": { "type": "object" },
+        "certificate": { "type": "object" },
+        "active_version": { "type": "integer" },
+        "genome_versions": { "type": "array" }
+      },
+      "required": ["id", "name", "creator", "jurisdiction", "created_at", "is_revoked", "genome", "certificate", "active_version"]
+    },
+    "LedgerEvent": {
+      "title": "LedgerEvent",
+      "description": "An immutable log block in the agent ledger chain.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "agent_id": { "type": "string" },
+        "timestamp": { "type": "string" },
+        "event_type": { "type": "string" },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "operator": { "type": "string" },
+        "prev_event_hash": { "type": "string" },
+        "event_hash": { "type": "string" },
+        "severity": { "type": "string" },
+        "metadata": { "type": "object" }
+      },
+      "required": ["id", "agent_id", "timestamp", "event_type", "title", "description", "operator", "prev_event_hash", "event_hash"]
+    },
+    "IncidentRecord": {
+      "title": "IncidentRecord",
+      "description": "An operational or compliance anomaly recorded for an agent.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "agent_id": { "type": "string" },
+        "agent_name": { "type": "string" },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "severity": { "type": "string" },
+        "reported_at": { "type": "string" },
+        "status": { "type": "string" },
+        "remediation_notes": { "type": "string" }
+      },
+      "required": ["id", "agent_id", "agent_name", "title", "description", "severity", "reported_at", "status"]
+    },
+    "BillingUsage": {
+      "title": "BillingUsage",
+      "description": "Subscription and operation limits configuration.",
+      "type": "object",
+      "properties": {
+        "tier": { "type": "string" },
+        "active_agents": { "type": "integer" },
+        "agent_limit": { "type": "integer" },
+        "ledger_storage_mb": { "type": "number" },
+        "storage_limit_mb": { "type": "integer" },
+        "lineage_renders": { "type": "integer" },
+        "renders_limit": { "type": "integer" },
+        "price_monthly": { "type": "integer" },
+        "overage_agent_fee": { "type": "integer" }
+      },
+      "required": ["tier", "active_agents", "agent_limit", "ledger_storage_mb", "storage_limit_mb", "lineage_renders", "renders_limit", "price_monthly", "overage_agent_fee"]
+    }
+  },
+  "firestore": {
+    "pgl_agents": {
+      "schema": "AgentRecord",
+      "description": "AI Agent compliance register."
+    },
+    "pgl_ledger_events": {
+      "schema": "LedgerEvent",
+      "description": "Immutable ledger sequence events."
+    },
+    "pgl_incidents": {
+      "schema": "IncidentRecord",
+      "description": "Audit and operational incidents."
+    },
+    "pgl_config": {
+      "schema": "BillingUsage",
+      "description": "Billing and metadata pricing configurations."
+    }
+  }
+}

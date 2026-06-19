@@ -1,0 +1,6 @@
+{
+  "name": "Project Genome Ledger",
+  "description": "Advanced decentralized AI agent registry, lineage explorer, immune auditing ledger, and compliance control plane.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

@@ -1,0 +1,185 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Space Grotesk", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+  
+  --color-brand: #F27D26;
+  --color-brand-hover: #ff8e3d;
+  --color-brand-light: #ff9e5e;
+  --color-brand-muted: rgba(242, 125, 38, 0.1);
+  --color-brand-border: rgba(242, 125, 38, 0.2);
+}
+
+/* Custom fade animation for smooth screen swaps */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+body {
+  background-color: #050505;
+  color: #E0E0E0;
+}
+
+.markdown-body h1 {
+  font-family: var(--font-display);
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: #f8fafc;
+  margin-top: 1rem;
+  margin-bottom: 0.5rem;
+}
+
+.markdown-body h2 {
+  font-family: var(--font-display);
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: #f1f5f9;
+  margin-top: 0.75rem;
+  margin-bottom: 0.25rem;
+}
+
+.markdown-body p {
+  margin-bottom: 0.5rem;
+}
+
+.markdown-body ul {
+  list-style-type: disc;
+  margin-left: 1.25rem;
+  margin-bottom: 0.5rem;
+}
+
+.markdown-body strong {
+  font-weight: 600;
+  color: #F27D26;
+}
+
+.markdown-body blockquote {
+  border-left: 3px solid #F27D26;
+  padding-left: 0.75rem;
+  color: #94a3b8;
+  font-style: italic;
+  margin: 0.5rem 0;
+}
+
+
+/* Light Mode Stylesheet Overlay Variables & Utility Overrides */
+body.light {
+  background-color: #f8fafc !important;
+  color: #0f172a !important;
+}
+
+/* Base backgrounds override */
+body.light .bg-slate-950,
+body.light .bg-slate-950\/80,
+body.light .bg-slate-950\/60,
+body.light .bg-slate-950\/40,
+body.light .bg-[#050505],
+body.light .bg-[#050505]\/60,
+body.light .bg-[#050505]\/40,
+body.light .bg-[#050505]\/95 {
+  background-color: #f1f5f9 !important;
+}
+
+body.light .bg-slate-900,
+body.light .bg-[#0A0A0A] {
+  background-color: #ffffff !important;
+}
+
+body.light .bg-slate-800,
+body.light .bg-slate-800\/80,
+body.light .bg-slate-800\/20,
+body.light .bg-white\/5 {
+  background-color: #e2e8f0 !important;
+}
+
+/* Borders override */
+body.light .border-white\/10,
+body.light .border-white\/5,
+body.light .border-slate-800,
+body.light .border-slate-850,
+body.light .border-slate-700,
+body.light .border-slate-600,
+body.light .border-indigo-950\/50,
+body.light .border-[#b25e16]\/20 {
+  border-color: #cbd5e1 !important;
+}
+
+/* Typography override */
+body.light .text-white,
+body.light .text-slate-100,
+body.light .text-slate-200,
+body.light .text-slate-300 {
+  color: #0f172a !important;
+}
+
+body.light .text-white\/80,
+body.light .text-white\/70,
+body.light .text-white\/60,
+body.light .text-[#8A8A8A],
+body.light .text-slate-300,
+body.light .text-slate-350,
+body.light .text-slate-400 {
+  color: #334155 !important;
+}
+
+body.light .text-white\/40,
+body.light .text-white\/30,
+body.light .text-slate-450,
+body.light .text-slate-500 {
+  color: #64748b !important;
+}
+
+/* Special color overrides */
+body.light .text-brand {
+  color: #ea580c !important; /* Higher contrast dark orange for light mode accessibility */
+}
+
+body.light .bg-brand {
+  background-color: #ea580c !important;
+  color: #ffffff !important;
+}
+
+body.light .bg-brand\/10 {
+  background-color: rgba(234, 88, 12, 0.1) !important;
+}
+
+body.light .border-brand {
+  border-color: #ea580c !important;
+}
+
+body.light .markdown-body h1,
+body.light .markdown-body h2 {
+  color: #0f172a !important;
+}
+
+body.light .markdown-body blockquote {
+  color: #475569 !important;
+  border-color: #ea580c !important;
+}
+
+body.light select,
+body.light input,
+body.light textarea {
+  background-color: #f1f5f9 !important;
+  color: #0f172a !important;
+  border-color: #cbd5e1 !important;
+}
+
+body.light select option {
+  background-color: #ffffff !important;
+  color: #0f172a !important;
+}
+
+body.light .shadow-xl {
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.05), 0 4px 6px -2px rgba(0, 0, 0, 0.02) !important;
+}
+
+
