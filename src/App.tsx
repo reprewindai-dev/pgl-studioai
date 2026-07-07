@@ -30,6 +30,7 @@ import {
   ExternalLink,
   ChevronRight,
   ClipboardCheck,
+  Fingerprint,
   AlertTriangle,
   Flame,
   Wrench,
@@ -68,6 +69,7 @@ import LineageExplorer from "./components/LineageExplorer";
 import NotaryChat from "./components/NotaryChat";
 import GoogleSheetsSync from "./components/GoogleSheetsSync";
 import ExecutionIdentityV1Control from "./components/ExecutionIdentityV1Control";
+import ManualHashVerifier from "./components/ManualHashVerifier";
 
 // Default placeholder for new agent creation wizard
 const INITIAL_GENOME: GenomePayload = {
@@ -246,7 +248,7 @@ export default function App() {
       ]
     };
   });
-  const [activeTab, setActiveTab] = useState<"registry" | "timeline" | "lineage" | "billing" | "notary_chat" | "incidents" | "sheets" | "execution_identity">("registry");
+  const [activeTab, setActiveTab] = useState<"registry" | "timeline" | "lineage" | "billing" | "notary_chat" | "incidents" | "sheets" | "execution_identity" | "hash_verifier">("registry");
   const [sheetsAccessToken, setSheetsAccessToken] = useState<string | null>(null);
   const [selectedRole, setSelectedRole] = useState<UserRole>("owner");
   const [isLoading, setIsLoading] = useState(true);
@@ -1660,6 +1662,7 @@ export default function App() {
               { id: "incidents", label: "Incident Remediation", icon: ShieldAlert },
               { id: "notary_chat", label: "Compliance Chatbot", icon: Sparkles },
               { id: "sheets", label: "Google Sheets Sync", icon: FileSpreadsheet },
+              { id: "hash_verifier", label: "Manual Integrity Verifier", icon: Fingerprint },
               { id: "billing", label: "Plan Quotas", icon: Coins },
             ].map((tab) => {
               const Icon = tab.icon;
@@ -2602,6 +2605,14 @@ export default function App() {
                 onAddLedgerEvent={handleTriggerLedgerEventDirectly}
                 onAddIncident={handleAddIncidentFromSimulator}
                 selectedRole={selectedRole}
+              />
+            )}
+
+            {/* 8. MANUAL INTEGRITY HASH VERIFIER HANDSHAKE */}
+            {activeTab === "hash_verifier" && (
+              <ManualHashVerifier
+                ledgerEvents={ledgerEvents}
+                agents={agents}
               />
             )}
 

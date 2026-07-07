@@ -72,6 +72,21 @@
         "overage_agent_fee": { "type": "integer" }
       },
       "required": ["tier", "active_agents", "agent_limit", "ledger_storage_mb", "storage_limit_mb", "lineage_renders", "renders_limit", "price_monthly", "overage_agent_fee"]
+    },
+    "AuditReminder": {
+      "title": "AuditReminder",
+      "description": "A scheduled compliance audit reminder.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "agentId": { "type": "string" },
+        "agentName": { "type": "string" },
+        "days": { "type": "integer" },
+        "scheduledAt": { "type": "string" },
+        "targetTime": { "type": "string" },
+        "triggered": { "type": "boolean" }
+      },
+      "required": ["id", "agentId", "agentName", "days", "scheduledAt", "targetTime", "triggered"]
     }
   },
   "firestore": {
@@ -90,6 +105,10 @@
     "pgl_config": {
       "schema": "BillingUsage",
       "description": "Billing and metadata pricing configurations."
+    },
+    "pgl_reminders": {
+      "schema": "AuditReminder",
+      "description": "Scheduled compliance audit reminders."
     }
   }
 }

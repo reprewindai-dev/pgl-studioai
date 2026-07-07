@@ -18,5 +18,9 @@ service cloud.firestore {
     match /pgl_config/{configId} {
       allow read, write: if true;
     }
+    
+    match /pgl_reminders/{reminderId} {
+      allow read, write: if true;
+    }
   }
 }
