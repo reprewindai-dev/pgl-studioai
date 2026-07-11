@@ -63,7 +63,7 @@ import {
   getRemindersFromFirestore,
   saveReminderToFirestore,
   deleteReminderFromFirestore
-} from "./dbService";
+} from "./pglService";
 import { computeEventHash } from "./data";
 import LineageExplorer from "./components/LineageExplorer";
 import NotaryChat from "./components/NotaryChat";

@@ -61,7 +61,7 @@ export interface LedgerEvent {
 }
 
 export interface BillingUsage {
-  tier: "launch" | "scale" | "enterprise";
+  tier: "free" | "launch" | "scale" | "enterprise";
   active_agents: number;
   agent_limit: number;
   ledger_storage_mb: number;

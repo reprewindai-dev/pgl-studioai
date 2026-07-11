@@ -1,6 +1,9 @@
 import React, { useState, useEffect } from "react";
-import { signInWithPopup, GoogleAuthProvider, User } from "firebase/auth";
-import { auth } from "../firebase";
+// TEMP: Sheets sync used Firebase's Google auth (signInWithPopup) purely for
+// convenience. Firebase was removed as part of the gnomledger migration.
+// This is stubbed to "coming soon" below rather than left silently broken.
+// Real fix: swap to Google Identity Services directly (no Firebase dependency).
+type User = { displayName?: string | null; email?: string | null; photoURL?: string | null } | null;
 import { AgentRecord, LedgerEvent } from "../types";
 import { 
   FileSpreadsheet, 
@@ -57,18 +60,10 @@ export default function GoogleSheetsSync({
 
   // Sync state loaded values
   useEffect(() => {
-    // Sync to user auth if already available in firebase
-    const unsubscribe = auth.onAuthStateChanged((user) => {
-      if (user && user.providerData.some(p => p.providerId === "google.com")) {
-        setGoogleUser(user);
-        // Note: accessToken can't be fetched automatically via onAuthStateChanged without popup/redirect
-        // so we prompt login to get active Sheets scope access token if not available in memory.
-      } else {
-        setGoogleUser(null);
-        onAccessTokenChange(null);
-      }
-    });
-    return () => unsubscribe();
+    // Firebase auth removed. Sheets sync sign-in is temporarily disabled
+    // pending a direct Google Identity Services integration.
+    setGoogleUser(null);
+    onAccessTokenChange(null);
   }, [onAccessTokenChange]);
 
   const addLogEntry = (type: "success" | "info" | "error", msg: string) => {
@@ -80,22 +75,10 @@ export default function GoogleSheetsSync({
     setIsLoggingIn(true);
     setAuthError(null);
     try {
-      const provider = new GoogleAuthProvider();
-      // Add requested Google Sheets and Google Drive permissions
-      provider.addScope("https://www.googleapis.com/auth/spreadsheets");
-      provider.addScope("https://www.googleapis.com/auth/drive.file");
-      
-      const result = await signInWithPopup(auth, provider);
-      const credential = GoogleAuthProvider.credentialFromResult(result);
-      const token = credential?.accessToken;
-
-      if (!token) {
-        throw new Error("Google access token was not issued correctly by Firebase Auth.");
-      }
-
-      onAccessTokenChange(token);
-      setGoogleUser(result.user);
-      addLogEntry("success", `Authenticated as ${result.user.email}. Token cached in secure volatile memory.`);
+      throw new Error(
+        "Google Sheets sync sign-in is temporarily unavailable while it's migrated " +
+        "off Firebase Auth to Google Identity Services. Coming soon."
+      );
     } catch (err: any) {
       console.error(err);
       setAuthError(err.message || "Failed to authenticate with Google.");
