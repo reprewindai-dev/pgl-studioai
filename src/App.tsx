@@ -249,7 +249,7 @@ export default function App() {
     };
   });
   const [activeTab, setActiveTab] = useState<"registry" | "timeline" | "lineage" | "billing" | "notary_chat" | "incidents" | "sheets" | "execution_identity" | "hash_verifier">("registry");
-  const [sheetsAccessToken, setSheetsAccessToken] = useState<string | null>(null);
+
   const [selectedRole, setSelectedRole] = useState<UserRole>("owner");
   const [isLoading, setIsLoading] = useState(true);
   const [verificationResult, setVerificationResult] = useState<{
@@ -486,8 +486,8 @@ export default function App() {
       setTimeout(() => setShowConfetti(false), 5000); // clear celebration state
 
       // Background auto sync to Google Sheets if authorized
-      tryAutoSyncToSheets("agent", newAgent);
-      tryAutoSyncToSheets("event", birthEvent);
+
+
 
       // Reset Inputs
       setNewAgentName("");
@@ -570,7 +570,7 @@ export default function App() {
       setSelectedAgent(updatedAgent);
 
       // Background auto sync to Google Sheets if authorized
-      tryAutoSyncToSheets("event", patchEvent);
+
 
       // increment billing storage metric
       const updatedBilling = {
@@ -630,7 +630,7 @@ export default function App() {
       setLedgerEvents([...ledgerEvents, incidentEvent]);
 
       // Background auto sync to Google Sheets if authorized
-      tryAutoSyncToSheets("event", incidentEvent);
+
 
       setNewIncidentTitle("");
       setNewIncidentDesc("");
@@ -645,7 +645,7 @@ export default function App() {
     const success = await saveLedgerEventToFirestore(newEvent);
     if (success) {
       setLedgerEvents(prev => [...prev, newEvent]);
-      tryAutoSyncToSheets("event", newEvent);
+
     }
   };
 
@@ -655,7 +655,7 @@ export default function App() {
     if (successIncident && successEvent) {
       setIncidents(prev => [...prev, newIncident]);
       setLedgerEvents(prev => [...prev, incidentEvent]);
-      tryAutoSyncToSheets("event", incidentEvent);
+
     }
   };
 
@@ -692,7 +692,7 @@ export default function App() {
     setLedgerEvents([...ledgerEvents, remediationEvent]);
 
     // Background auto sync to Google Sheets if authorized
-    tryAutoSyncToSheets("event", remediationEvent);
+
 
     setRemediationNotesText("");
     setActiveRemediatingId(null);
@@ -745,8 +745,8 @@ export default function App() {
       setSelectedAgent(updatedAgent);
 
       // Background auto sync to sheet for both agent's new status and termination log block
-      tryAutoSyncToSheets("agent", updatedAgent);
-      tryAutoSyncToSheets("event", terminationEvent);
+
+
 
       alert(`Official Decommission Complete: "${selectedAgent.name}" secure active tag has been designated TERMINATED.`);
     } else {
@@ -990,138 +990,6 @@ export default function App() {
     const success = await saveLedgerEventToFirestore(newEvent);
     if (success) {
       setLedgerEvents(prev => [...prev, newEvent]);
-    }
-  };
-
-  const tryAutoSyncToSheets = async (type: "agent" | "event", data: any) => {
-    try {
-      if (!sheetsAccessToken) return;
-
-      let sheetId = localStorage.getItem("pgl_gsheets_id") || "";
-      let isSyncEnabled = localStorage.getItem("pgl_gsheets_sync_enabled") === "true";
-
-      // Automatically provision the spreadsheet if missing but authorized with Google Sheets
-      if (!sheetId) {
-        console.log("No sheetId configured, but Google Sheets token is present. Auto-creating certified template layout...");
-        try {
-          const createResponse = await fetch("https://sheets.googleapis.com/v4/spreadsheets", {
-            method: "POST",
-            headers: {
-              "Authorization": `Bearer ${sheetsAccessToken}`,
-              "Content-Type": "application/json"
-            },
-            body: JSON.stringify({
-              properties: {
-                title: "Project Genome Ledger - Audited Registry"
-              },
-              sheets: [
-                {
-                  properties: {
-                    title: "AI Agents",
-                    gridProperties: { frozenRowCount: 1 }
-                  }
-                },
-                {
-                  properties: {
-                    title: "Timeline logs",
-                    gridProperties: { frozenRowCount: 1 }
-                  }
-                }
-              ]
-            })
-          });
-
-          if (createResponse.ok) {
-            const rawInfo = await createResponse.json();
-            sheetId = rawInfo.spreadsheetId;
-            localStorage.setItem("pgl_gsheets_id", sheetId);
-            localStorage.setItem("pgl_gsheets_sync_enabled", "true");
-            isSyncEnabled = true;
-
-            const rAgents = "'AI Agents'!A1:I1";
-            const vAgents = [
-              ["Agent ID", "Name", "Serial Number", "Risk Category", "Model Creator", "Jurisdiction", "Active Version", "Birth Certificate Date", "License Status"]
-            ];
-            const rLogs = "'Timeline logs'!A1:G1";
-            const vLogs = [
-              ["Log Block ID", "Agent Name", "Event Type", "Event Title", "Incident Description / Notes", "Operator Signature", "Timestamp"]
-            ];
-
-            await Promise.all([
-              fetch(`https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${rAgents}?valueInputOption=RAW`, {
-                method: "PUT",
-                headers: {
-                  "Authorization": `Bearer ${sheetsAccessToken}`,
-                  "Content-Type": "application/json"
-                },
-                body: JSON.stringify({ values: vAgents })
-              }),
-              fetch(`https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${rLogs}?valueInputOption=RAW`, {
-                method: "PUT",
-                headers: {
-                  "Authorization": `Bearer ${sheetsAccessToken}`,
-                  "Content-Type": "application/json"
-                },
-                body: JSON.stringify({ values: vLogs })
-              })
-            ]);
-            console.log("Auto-created Google Spreadsheet successfully! ID:", sheetId);
-          }
-        } catch (initErr) {
-          console.error("Autosync failed to provision automatic spreadsheet blueprint", initErr);
-        }
-      }
-
-      if (!sheetId) return;
-
-      // Force automatic syncing to be active
-      localStorage.setItem("pgl_gsheets_sync_enabled", "true");
-
-      if (type === "agent") {
-        const agent = data as AgentRecord;
-        const row = [
-          agent.id,
-          agent.name,
-          agent.certificate.serial_number,
-          agent.genome.risk_category.toUpperCase(),
-          agent.creator,
-          agent.jurisdiction,
-          agent.active_version,
-          agent.created_at,
-          agent.is_revoked ? "TERMINATED / REVOKED" : "LIVE Active Tag"
-        ];
-        await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/'AI Agents'!A:A:append?valueInputOption=RAW`, {
-          method: "POST",
-          headers: {
-            "Authorization": `Bearer ${sheetsAccessToken}`,
-            "Content-Type": "application/json"
-          },
-          body: JSON.stringify({ values: [row] })
-        });
-      } else {
-        const evt = data as LedgerEvent;
-        const matchAgent = agents.find(a => a.id === evt.agent_id);
-        const nameDisplay = matchAgent ? matchAgent.name : `Agent ID: ${evt.agent_id}`;
-        const row = [
-          evt.id,
-          nameDisplay,
-          evt.event_type.toUpperCase(),
-          evt.title,
-          evt.description,
-          evt.operator,
-          evt.timestamp
-        ];
-        await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/'Timeline logs'!A:A:append?valueInputOption=RAW`, {
-          method: "POST",
-          headers: {
-            "Authorization": `Bearer ${sheetsAccessToken}`,
-            "Content-Type": "application/json"
-          },
-          body: JSON.stringify({ values: [row] })
-        });
-      }
-    } catch (e) {
-      console.warn("Autosync to Google Sheets failed silently", e);
     }
   };
 
@@ -2262,11 +2130,11 @@ export default function App() {
             {activeTab === "sheets" && (
               <GoogleSheetsSync
                 agents={agents}
-                ledgerEvents={ledgerEvents}
-                onAddLog={handleAddLedgerEvent}
-                selectedRole={selectedRole}
-                accessToken={sheetsAccessToken}
-                onAccessTokenChange={setSheetsAccessToken}
+
+
+
+
+
               />
             )}
 
@@ -2601,17 +2469,17 @@ export default function App() {
             {activeTab === "execution_identity" && (
               <ExecutionIdentityV1Control
                 agents={agents}
-                ledgerEvents={ledgerEvents}
+
                 onAddLedgerEvent={handleTriggerLedgerEventDirectly}
                 onAddIncident={handleAddIncidentFromSimulator}
-                selectedRole={selectedRole}
+
               />
             )}
 
             {/* 8. MANUAL INTEGRITY HASH VERIFIER HANDSHAKE */}
             {activeTab === "hash_verifier" && (
               <ManualHashVerifier
-                ledgerEvents={ledgerEvents}
+
                 agents={agents}
               />
             )}

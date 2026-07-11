@@ -18,7 +18,7 @@ import type {
   UsageLimit
 } from "./gnomledgerTypes";
 
-const API_ROOT = "/api/v1";
+const API_ROOT = import.meta.env?.VITE_API_URL || "/api/v1";
 
 function normalizeErrorMessage(raw: string, status: number) {
   if (!raw) {
