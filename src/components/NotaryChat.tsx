@@ -2,6 +2,8 @@ import React, { useState, useRef, useEffect } from "react";
 import { ChatMessage, AgentRecord } from "../types";
 import { ShieldAlert, Send, Sparkles, User, Database, Terminal, FileCheck, CheckCircle2, AlertCircle } from "lucide-react";
 import ReactMarkdown from "react-markdown";
+import { notaryChat } from "../gnomledgerApi";
+import { getOrCreateSession } from "../pglSession";
 
 interface NotaryChatProps {
   agents: AgentRecord[];
@@ -19,7 +21,10 @@ export default function NotaryChat({ agents, selectedAgent }: NotaryChatProps) {
   ]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
-  const [selectedModel, setSelectedModel] = useState("gemini-2.5-flash");
+  const [selectedProvider, setSelectedProvider] = useState<"ollama" | "openai_compatible" | "gemini">("ollama");
+  const [selectedModel, setSelectedModel] = useState("llama3.1");
+  const [providerApiKey, setProviderApiKey] = useState("");
+  const [providerBaseUrl, setProviderBaseUrl] = useState("");
   const threadEndRef = useRef<HTMLDivElement>(null);
 
   // Scroll to bottom whenever messages list grows
@@ -44,15 +49,12 @@ export default function NotaryChat({ agents, selectedAgent }: NotaryChatProps) {
     setLoading(true);
 
     try {
-      const response = await fetch("/api/chat", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-          messages: [...messages, userMessage].map(m => ({ role: m.role, content: m.content })),
-          model: selectedModel,
-          systemInstruction: `You are the ultimate 'Notary Custodian AI' of Project Genome Ledger, a specialized, high-integrity auditor for registered AI systems.
+      const session = await getOrCreateSession();
+      const result = await notaryChat(session, {
+        message: `${promptText}
+
+System context:
+You are the ultimate 'Notary Custodian AI' of Project Genome Ledger, a specialized, high-integrity auditor for registered AI systems.
 Your primary role is to enforce, audit, and explain AI compliance, alignment, safety rules, risk categorization, and cryptographic provenance checks under standard acts (such as the EU AI Act and NIST AI RMF).
 Maintain a professional, authoritative, objective, and polite developer-compliance tone.
 If the user references an active agent from the context, leverage this registered metadata in your audits:
@@ -60,20 +62,18 @@ Registered Agents List:
 ${JSON.stringify(agents.map(a => ({ id: a.id, name: a.name, risk: a.genome.risk_category, tools: a.genome.tools, safety_rules: a.genome.safety_rules })), null, 2)}
 Currently Selected Active Agent Context:
 ${selectedAgent ? JSON.stringify(selectedAgent, null, 2) : "None selected yet."}
-`
-        })
+`,
+        agent_id: selectedAgent?.id,
+        provider: selectedProvider,
+        model: selectedModel,
+        provider_api_key: providerApiKey.trim() || undefined,
+        provider_base_url: providerBaseUrl.trim() || undefined
       });
-
-      if (!response.ok) {
-        throw new Error("Failed to communicate with notary endpoint");
-      }
-
-      const data = await response.json();
       
       const assistantMessage: ChatMessage = {
         id: "msg-ast-" + Date.now(),
         role: "assistant",
-        content: data.text || "I apologize, I received an invalid audit packet. Please try again.",
+        content: result.reply || "I apologize, I received an invalid audit packet. Please try again.",
         timestamp: new Date().toISOString()
       };
 
@@ -82,7 +82,7 @@ ${selectedAgent ? JSON.stringify(selectedAgent, null, 2) : "None selected yet."}
       const errorMessage: ChatMessage = {
         id: "msg-err-" + Date.now(),
         role: "assistant",
-        content: `⚠️ **Audit Communication Failure**: ${e.message || "Failed to reach server-side Gemini gateway. Make sure GEMINI_API_KEY is configured in your secrets."}`,
+        content: `**Audit Communication Failure**: ${e.message || "Failed to reach the configured notary provider. Ollama is the default provider; external providers require a customer key."}`,
         timestamp: new Date().toISOString()
       };
       setMessages((prev) => [...prev, errorMessage]);
@@ -120,7 +120,7 @@ ${selectedAgent ? JSON.stringify(selectedAgent, null, 2) : "None selected yet."}
               Compliance Notary Guard Chatbot
             </h4>
             <p className="text-xs text-slate-400">
-              Interactive audit consultant powered by Gemini intelligence
+              Interactive audit consultant powered by Ollama-first BYOK intelligence
             </p>
           </div>
         </div>
@@ -129,15 +129,64 @@ ${selectedAgent ? JSON.stringify(selectedAgent, null, 2) : "None selected yet."}
         <div className="flex items-center gap-2 bg-slate-950 px-2.5 py-1.5 rounded-lg border border-slate-850 self-end sm:self-auto">
           <span className="text-[10px] text-slate-500 font-mono">BRAIN:</span>
           <select
+            value={selectedProvider}
+            onChange={(e) => {
+              const provider = e.target.value as "ollama" | "openai_compatible" | "gemini";
+              setSelectedProvider(provider);
+              setSelectedModel(provider === "ollama" ? "llama3.1" : provider === "gemini" ? "gemini-2.5-flash" : "gpt-4o-mini");
+            }}
+            className="text-xs bg-transparent border-none text-emerald-400 font-mono outline-none cursor-pointer"
+          >
+            <option value="ollama" className="bg-slate-900">Ollama</option>
+            <option value="openai_compatible" className="bg-slate-900">BYOK</option>
+            <option value="gemini" className="bg-slate-900">Gemini BYOK</option>
+          </select>
+          <select
             value={selectedModel}
             onChange={(e) => setSelectedModel(e.target.value)}
             className="text-xs bg-transparent border-none text-emerald-400 font-mono outline-none cursor-pointer"
           >
-            <option value="gemini-2.5-flash" className="bg-slate-900">Gemini 2.5 Flash</option>
-            <option value="gemini-2.5-pro" className="bg-slate-900">Gemini 2.5 Pro (Thinking)</option>
+            {selectedProvider === "ollama" && (
+              <>
+                <option value="llama3.1" className="bg-slate-900">llama3.1</option>
+                <option value="llama3.2" className="bg-slate-900">llama3.2</option>
+                <option value="mistral" className="bg-slate-900">mistral</option>
+              </>
+            )}
+            {selectedProvider === "openai_compatible" && (
+              <>
+                <option value="gpt-4o-mini" className="bg-slate-900">gpt-4o-mini</option>
+                <option value="gpt-4o" className="bg-slate-900">gpt-4o</option>
+                <option value="claude-3-5-sonnet-latest" className="bg-slate-900">claude-3-5-sonnet-latest</option>
+              </>
+            )}
+            {selectedProvider === "gemini" && (
+              <>
+                <option value="gemini-2.5-flash" className="bg-slate-900">gemini-2.5-flash</option>
+                <option value="gemini-2.5-pro" className="bg-slate-900">gemini-2.5-pro</option>
+              </>
+            )}
           </select>
         </div>
       </div>
+
+      {selectedProvider !== "ollama" && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-4">
+          <input
+            type="password"
+            value={providerApiKey}
+            onChange={(e) => setProviderApiKey(e.target.value)}
+            placeholder="Customer provider key"
+            className="bg-slate-950 text-xs text-slate-100 font-mono placeholder-slate-500 border border-slate-850 focus:border-slate-700 rounded-xl px-4 py-3 outline-none"
+          />
+          <input
+            value={providerBaseUrl}
+            onChange={(e) => setProviderBaseUrl(e.target.value)}
+            placeholder={selectedProvider === "gemini" ? "Gemini uses default endpoint" : "OpenAI-compatible base URL"}
+            className="bg-slate-950 text-xs text-slate-100 font-mono placeholder-slate-500 border border-slate-850 focus:border-slate-700 rounded-xl px-4 py-3 outline-none"
+          />
+        </div>
+      )}
 
       {/* Message Area */}
       <div className="flex-1 overflow-y-auto space-y-4 pr-1 scrollbar-thin scrollbar-thumb-slate-800 scrollbar-track-transparent">
