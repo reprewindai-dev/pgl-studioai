@@ -54,6 +54,9 @@ async function request<T>(path: string, init?: RequestInit, session?: SessionSta
     throw new Error(normalizeErrorMessage(text, response.status));
   }
 
+  if (response.status === 204) {
+    return undefined as T;
+  }
   return (await response.json()) as T;
 }
 
@@ -158,27 +161,33 @@ export function notaryChat(session: SessionState, payload: NotaryChatRequest) {
 // Incidents
 // ---------------------------------------------------------------------------
 
-export function listIncidents(session: SessionState, agentId?: string) {
-  const qs = agentId ? `?agent_id=${encodeURIComponent(agentId)}` : "";
-  return request<IncidentRecord[]>(`/incidents${qs}`, undefined, session);
+// gnomledger scopes incidents and reminders to an agent: /agents/{agent_id}/incidents|reminders.
+function agentPath(agentId: string, resource: "incidents" | "reminders") {
+  return `/agents/${encodeURIComponent(agentId)}/${resource}`;
+}
+
+export function listIncidents(session: SessionState, agentId: string) {
+  return request<IncidentRecord[]>(agentPath(agentId, "incidents"), undefined, session);
 }
 
 export function createIncident(
   session: SessionState,
   payload: { agent_id: string; severity: IncidentSeverity; title: string; description: string; reporter: string }
 ) {
-  return request<IncidentRecord>("/incidents", {
+  const { agent_id, ...body } = payload;
+  return request<IncidentRecord>(agentPath(agent_id, "incidents"), {
     method: "POST",
-    body: JSON.stringify(payload)
+    body: JSON.stringify(body)
   }, session);
 }
 
 export function updateIncident(
   session: SessionState,
+  agentId: string,
   incidentId: string,
   payload: { status: IncidentStatus; resolution_notes?: string | null }
 ) {
-  return request<IncidentRecord>(`/incidents/${incidentId}`, {
+  return request<IncidentRecord>(`${agentPath(agentId, "incidents")}/${encodeURIComponent(incidentId)}`, {
     method: "PATCH",
     body: JSON.stringify(payload)
   }, session);
@@ -188,23 +197,23 @@ export function updateIncident(
 // Audit Reminders
 // ---------------------------------------------------------------------------
 
-export function listAuditReminders(session: SessionState, agentId?: string) {
-  const qs = agentId ? `?agent_id=${encodeURIComponent(agentId)}` : "";
-  return request<AuditReminder[]>(`/reminders${qs}`, undefined, session);
+export function listAuditReminders(session: SessionState, agentId: string) {
+  return request<AuditReminder[]>(agentPath(agentId, "reminders"), undefined, session);
 }
 
 export function createAuditReminder(
   session: SessionState,
   payload: { agent_id: string; title: string; message: string; frequency: AuditReminderFrequency; next_trigger_at: string }
 ) {
-  return request<AuditReminder>("/reminders", {
+  const { agent_id, ...body } = payload;
+  return request<AuditReminder>(agentPath(agent_id, "reminders"), {
     method: "POST",
-    body: JSON.stringify(payload)
+    body: JSON.stringify(body)
   }, session);
 }
 
-export function deleteAuditReminder(session: SessionState, reminderId: string) {
-  return request<void>(`/reminders/${reminderId}`, {
+export function deleteAuditReminder(session: SessionState, agentId: string, reminderId: string) {
+  return request<void>(`${agentPath(agentId, "reminders")}/${encodeURIComponent(reminderId)}`, {
     method: "DELETE"
   }, session);
 }

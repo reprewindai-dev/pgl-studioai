@@ -153,7 +153,10 @@ export async function bootstrapDatabaseIfEmpty(): Promise<{
   const billing = aggregateBilling(usageRows, "free"); // TODO: read real tier from account once that field exists on SessionState
 
   const agentNameById = new Map(glAgents.map(a => [a.agent_id, a.name]));
-  const glIncidents = await pgl.listIncidents(session);
+  const glIncidents = (
+    await Promise.all(glAgents.map(a => pgl.listIncidents(session, a.agent_id)))
+  ).flat();
+  glIncidents.forEach(i => incidentAgentIds.set(i.incident_id, i.agent_id));
   const incidents = glIncidents.map(i => mapIncident(i, agentNameById));
 
   agents.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
@@ -164,6 +167,11 @@ export async function bootstrapDatabaseIfEmpty(): Promise<{
 // ---------------------------------------------------------------------------
 // Writes
 // ---------------------------------------------------------------------------
+
+// gnomledger addresses incidents and reminders under their agent, while App.tsx updates
+// and deletes them by id alone; these maps carry the owning agent between the calls.
+const incidentAgentIds = new Map<string, string>();
+const reminderAgentIds = new Map<string, string>();
 
 export async function saveAgentToFirestore(agent: AgentRecord): Promise<boolean> {
   try {
@@ -215,17 +223,13 @@ export async function updateAgentInFirestore(agent: AgentRecord): Promise<boolea
 }
 
 // ---------------------------------------------------------------------------
-// Incidents / Reminders — NO BACKEND ROUTE YET.
-// These are honest local-session-only stubs (not Firestore, not persisted
-// server-side) so the UI doesn't crash. They log a warning so this gap stays
-// visible instead of silently "working." Wire these to real endpoints once
-// backend/app/routes/incidents.py and reminders.py exist.
+// Incidents / Reminders — gnomledger /agents/{agent_id}/incidents and /reminders.
 // ---------------------------------------------------------------------------
 
 export async function saveIncidentToFirestore(inc: IncidentRecord): Promise<boolean> {
   try {
     const session = await getOrCreateSession();
-    await pgl.createIncident(session, {
+    const created = await pgl.createIncident(session, {
       agent_id: inc.agent_id,
       // "critical" is a valid backend severity but not in the UI's type union;
       // this cast is safe since the UI never actually produces "critical".
@@ -237,6 +241,7 @@ export async function saveIncidentToFirestore(inc: IncidentRecord): Promise<bool
       // studio-identity label, consistent with admin_name in pglSession.ts.
       reporter: "pgl-studio-operator"
     });
+    incidentAgentIds.set(created.incident_id, created.agent_id);
     return true;
   } catch (err) {
     console.error("pglService.saveIncidentToFirestore failed:", err);
@@ -250,9 +255,13 @@ export async function remediateIncidentInFirestore(
   notes: string
 ): Promise<boolean> {
   try {
+    const agentId = incidentAgentIds.get(incId);
+    if (!agentId) {
+      throw new Error(`Unknown incident ${incId}: reload the dashboard first`);
+    }
     const session = await getOrCreateSession();
     // Backend uses "resolved"/"closed"/"investigating"/"open"; UI's "remediated" maps to "resolved".
-    await pgl.updateIncident(session, incId, {
+    await pgl.updateIncident(session, agentId, incId, {
       status: status === "remediated" ? "resolved" : "investigating",
       resolution_notes: notes
     });
@@ -272,10 +281,11 @@ export async function updateBillingInFirestore(billing: BillingUsage): Promise<b
 export async function getRemindersFromFirestore(): Promise<AuditReminder[]> {
   try {
     const session = await getOrCreateSession();
-    const [glReminders, glAgents] = await Promise.all([
-      pgl.listAuditReminders(session),
-      pgl.listAgents(session)
-    ]);
+    const glAgents = await pgl.listAgents(session);
+    const glReminders = (
+      await Promise.all(glAgents.map(a => pgl.listAuditReminders(session, a.agent_id)))
+    ).flat();
+    glReminders.forEach(r => reminderAgentIds.set(r.reminder_id, r.agent_id));
     const agentNameById = new Map(glAgents.map(a => [a.agent_id, a.name]));
     return glReminders.map(r => mapReminder(r, agentNameById));
   } catch (err) {
@@ -290,13 +300,14 @@ export async function saveReminderToFirestore(reminder: AuditReminder): Promise<
     // App.tsx's AuditReminder has no title/message/frequency fields — this is
     // a one-shot "verification due in N days" reminder, reconstructed here
     // from the fields that do exist (agentName, days, targetTime).
-    await pgl.createAuditReminder(session, {
+    const created = await pgl.createAuditReminder(session, {
       agent_id: reminder.agentId,
       title: `Verification Reminder: ${reminder.agentName}`,
       message: `Scheduled agent verification/audit check for ${reminder.agentName}, due in ${reminder.days} day(s).`,
       frequency: "once",
       next_trigger_at: reminder.targetTime
     });
+    reminderAgentIds.set(created.reminder_id, created.agent_id);
     return true;
   } catch (err) {
     console.error("pglService.saveReminderToFirestore failed:", err);
@@ -306,8 +317,13 @@ export async function saveReminderToFirestore(reminder: AuditReminder): Promise<
 
 export async function deleteReminderFromFirestore(reminderId: string): Promise<boolean> {
   try {
+    const agentId = reminderAgentIds.get(reminderId);
+    if (!agentId) {
+      throw new Error(`Unknown reminder ${reminderId}: reload reminders first`);
+    }
     const session = await getOrCreateSession();
-    await pgl.deleteAuditReminder(session, reminderId);
+    await pgl.deleteAuditReminder(session, agentId, reminderId);
+    reminderAgentIds.delete(reminderId);
     return true;
   } catch (err) {
     console.error("pglService.deleteReminderFromFirestore failed:", err);
