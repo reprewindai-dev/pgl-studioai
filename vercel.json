@@ -1,0 +1,13 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "rewrites": [
+    { "source": "/api/v1/:path*", "destination": "/api/index?__path=/api/v1/:path*" },
+    { "source": "/health", "destination": "/api/index?__path=/health" },
+    { "source": "/health/:path*", "destination": "/api/index?__path=/health/:path*" },
+    { "source": "/.well-known/pgl-signing-key", "destination": "/api/index?__path=/.well-known/pgl-signing-key" },
+    { "source": "/.well-known/x402.json", "destination": "/api/index?__path=/.well-known/x402.json" },
+    { "source": "/api/health", "destination": "/api/index?__path=/api/health" },
+    { "source": "/api/chat", "destination": "/api/index?__path=/api/chat" },
+    { "source": "/api/analyze-genome", "destination": "/api/index?__path=/api/analyze-genome" }
+  ]
+}
