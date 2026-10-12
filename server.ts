@@ -1,4 +1,6 @@
 import express from "express";
+import http from "http";
+import https from "https";
 import path from "path";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI } from "@google/genai";
@@ -6,9 +8,70 @@ import dotenv from "dotenv";
 
 dotenv.config();
 
+// Paths owned by the Genome Ledger backend. Everything else is served here.
+const BACKEND_PATHS = ["/api/v1/", "/health", "/.well-known/pgl-signing-key", "/.well-known/x402.json"];
+
+function isBackendPath(url: string) {
+  return BACKEND_PATHS.some((prefix) =>
+    prefix.endsWith("/") ? url.startsWith(prefix) : url === prefix || url.startsWith(`${prefix}/`) || url.startsWith(`${prefix}?`)
+  );
+}
+
+// Streams Genome Ledger requests to PGL_BACKEND_URL. Mounted before the body parser so
+// request bodies pass through untouched. When PGL_STUDIO_API_KEY is set, the key is added
+// here on the server, so it never ships in the browser bundle.
+function createBackendProxy(backendUrl: string, studioApiKey: string | undefined): express.RequestHandler {
+  const target = new URL(backendUrl);
+  const client = target.protocol === "https:" ? https : http;
+  const basePath = target.pathname.replace(/\/$/, "");
+
+  return (req, res, next) => {
+    if (!isBackendPath(req.originalUrl)) {
+      return next();
+    }
+
+    const headers = { ...req.headers, host: target.host };
+    if (studioApiKey) {
+      headers["x-api-key"] = studioApiKey;
+    }
+
+    const upstream = client.request(
+      {
+        protocol: target.protocol,
+        hostname: target.hostname,
+        port: target.port || undefined,
+        method: req.method,
+        path: `${basePath}${req.originalUrl}`,
+        headers
+      },
+      (upstreamRes) => {
+        res.writeHead(upstreamRes.statusCode || 502, upstreamRes.headers);
+        upstreamRes.pipe(res);
+      }
+    );
+
+    upstream.on("error", (error) => {
+      console.error(`Genome Ledger backend unreachable at ${backendUrl}:`, error.message);
+      if (!res.headersSent) {
+        res.status(502).json({ detail: "Genome Ledger backend is unreachable" });
+      } else {
+        res.end();
+      }
+    });
+
+    req.pipe(upstream);
+  };
+}
+
 async function startServer() {
   const app = express();
-  const PORT = 3000;
+  const PORT = Number(process.env.PORT) || 3000;
+  const PGL_BACKEND_URL = process.env.PGL_BACKEND_URL || "http://127.0.0.1:8001";
+
+  // Behind Traefik/Cloudflare: take the client address from X-Forwarded-For for rate limiting.
+  app.set("trust proxy", true);
+
+  app.use(createBackendProxy(PGL_BACKEND_URL, process.env.PGL_STUDIO_API_KEY?.trim() || undefined));
 
   app.use(express.json());
 

@@ -34,19 +34,20 @@ export async function getOrCreateSession(): Promise<SessionState> {
     return existing;
   }
 
-  // First run on this browser: bootstrap a fresh PGL account.
+  // Deployed mode: the Studio server adds PGL_STUDIO_API_KEY to every Genome Ledger
+  // request, so the browser holds no key and does not bootstrap. A production
+  // gnomledger already has its runtime account, so /admin/bootstrap would answer 409.
+  const bootstrapToken = import.meta.env.VITE_PGL_BOOTSTRAP_TOKEN as string | undefined;
+  if (!bootstrapToken) {
+    return { apiKey: "", accountId: 0, role: "owner" };
+  }
+
+  // Local dev against an empty database: bootstrap a fresh PGL account.
   // NOTE: BOOTSTRAP_ADMIN_TOKEN must match the value configured on the
   // gnomledger backend (see gnomledger/.env.example -> BOOTSTRAP_ADMIN_TOKEN).
   // For a standalone-product launch this should be replaced by a real
   // signup/login flow that issues per-customer keys instead of a shared
   // bootstrap token.
-  const bootstrapToken = import.meta.env.VITE_PGL_BOOTSTRAP_TOKEN as string | undefined;
-  if (!bootstrapToken) {
-    throw new Error(
-      "VITE_PGL_BOOTSTRAP_TOKEN is not set. Add it to .env.local (dev) or the " +
-        "deployment environment. This is a placeholder until real signup/login ships."
-    );
-  }
 
   const result = await bootstrapAccount({
     bootstrap_token: bootstrapToken,
