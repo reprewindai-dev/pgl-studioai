@@ -1,79 +1,53 @@
 import express from "express";
-import http from "http";
-import https from "https";
 import path from "path";
+import { Readable } from "stream";
 import { createServer as createViteServer } from "vite";
-import { GoogleGenAI } from "@google/genai";
 import dotenv from "dotenv";
+import { handleStudioRequest, isLedgerPath } from "./lib/studioServer";
 
 dotenv.config();
 
-// Paths owned by the Genome Ledger backend. Everything else is served here.
-const BACKEND_PATHS = ["/api/v1/", "/health", "/.well-known/pgl-signing-key", "/.well-known/x402.json"];
+// Runs Studio's server routes (lib/studioServer.ts, shared with the Vercel Function in
+// api/index.ts) inside Express. Mounted before any body parser so request bodies pass
+// through untouched.
+const studioRoutes: express.RequestHandler = async (req, res, next) => {
+  try {
+    const url = `${req.protocol}://${req.get("host") || "localhost"}${req.originalUrl}`;
+    const hasBody = req.method !== "GET" && req.method !== "HEAD";
+    const headers = new Headers();
+    for (const [name, value] of Object.entries(req.headers)) {
+      if (value !== undefined) headers.set(name, Array.isArray(value) ? value.join(", ") : value);
+    }
+    const request = new Request(url, {
+      method: req.method,
+      headers,
+      body: hasBody ? (Readable.toWeb(req) as ReadableStream) : undefined,
+      // Required by Node's fetch implementation for streamed request bodies.
+      ...(hasBody ? { duplex: "half" } : {})
+    } as RequestInit);
 
-function isBackendPath(url: string) {
-  return BACKEND_PATHS.some((prefix) =>
-    prefix.endsWith("/") ? url.startsWith(prefix) : url === prefix || url.startsWith(`${prefix}/`) || url.startsWith(`${prefix}?`)
-  );
-}
-
-// Streams Genome Ledger requests to PGL_BACKEND_URL. Mounted before the body parser so
-// request bodies pass through untouched. When PGL_STUDIO_API_KEY is set, the key is added
-// here on the server, so it never ships in the browser bundle.
-function createBackendProxy(backendUrl: string, studioApiKey: string | undefined): express.RequestHandler {
-  const target = new URL(backendUrl);
-  const client = target.protocol === "https:" ? https : http;
-  const basePath = target.pathname.replace(/\/$/, "");
-
-  return (req, res, next) => {
-    if (!isBackendPath(req.originalUrl)) {
+    const response = await handleStudioRequest(request, process.env);
+    if (!response) {
       return next();
     }
-
-    const headers = { ...req.headers, host: target.host };
-    if (studioApiKey) {
-      headers["x-api-key"] = studioApiKey;
+    res.status(response.status);
+    response.headers.forEach((value, name) => res.setHeader(name, value));
+    if (response.body) {
+      Readable.fromWeb(response.body as any).pipe(res);
+    } else {
+      res.end();
     }
-
-    const upstream = client.request(
-      {
-        protocol: target.protocol,
-        hostname: target.hostname,
-        port: target.port || undefined,
-        method: req.method,
-        path: `${basePath}${req.originalUrl}`,
-        headers
-      },
-      (upstreamRes) => {
-        res.writeHead(upstreamRes.statusCode || 502, upstreamRes.headers);
-        upstreamRes.pipe(res);
-      }
-    );
-
-    upstream.on("error", (error) => {
-      console.error(`Genome Ledger backend unreachable at ${backendUrl}:`, error.message);
-      if (!res.headersSent) {
-        res.status(502).json({ detail: "Genome Ledger backend is unreachable" });
-      } else {
-        res.end();
-      }
-    });
-
-    req.pipe(upstream);
-  };
-}
+  } catch (error) {
+    next(error);
+  }
+};
 
 async function startServer() {
   const app = express();
   const PORT = Number(process.env.PORT) || 3000;
-  const PGL_BACKEND_URL = process.env.PGL_BACKEND_URL || "http://127.0.0.1:8001";
 
-  // Behind Traefik/Cloudflare: take the client address from X-Forwarded-For for rate limiting.
+  // Behind a proxy or load balancer: take the client address from X-Forwarded-For.
   app.set("trust proxy", true);
-
-  app.use(createBackendProxy(PGL_BACKEND_URL, process.env.PGL_STUDIO_API_KEY?.trim() || undefined));
-
-  app.use(express.json());
 
   // Rate Limiter bucket container
   interface RateLimitBucket {
@@ -131,100 +105,16 @@ async function startServer() {
   };
 
   // Mount rate limiter middleware per API key (applies to all `/api/*`)
-  app.use("/api", rateLimitingMiddleware);
+  app.use("/api", (req, res, next) =>
+    isLedgerPath(req.originalUrl.split("?")[0]) ? next() : rateLimitingMiddleware(req, res, next)
+  );
 
   // NOTE: the local mock billing endpoint that used to live here was removed.
   // Billing now comes from the real gnomledger backend via pglService.ts
   // (client-side call, aggregated from real /billing/usage rows). This dev
   // server no longer needs to fake it.
 
-  // Initialize Gemini client lazily
-  let aiClient: GoogleGenAI | null = null;
-  function getAi(): GoogleGenAI {
-    if (!aiClient) {
-      const apiKey = process.env.GEMINI_API_KEY;
-      if (!apiKey) {
-        throw new Error("GEMINI_API_KEY environment variable is required to prompt Gemini");
-      }
-      aiClient = new GoogleGenAI({ apiKey });
-    }
-    return aiClient;
-  }
-
-  // API router for Gemini requests
-  app.post("/api/chat", async (req, res) => {
-    try {
-      const { messages, systemInstruction, model } = req.body;
-      const ai = getAi();
-      const chatModel = model || "gemini-2.5-flash";
-
-      // Format messages into content format for @google/genai
-      const formattedContents = messages.map((m: any) => ({
-        role: m.role === "assistant" ? "model" : "user",
-        parts: [{ text: m.content }]
-      }));
-
-      // Set up the request options
-      const isProModel = chatModel.includes("pro");
-      const config: any = {};
-      
-      if (systemInstruction) {
-        config.systemInstruction = systemInstruction;
-      }
-      
-      if (isProModel) {
-        // pro model config supporting high thinking
-        config.thinkingConfig = {
-          thinkingBudget: 2048,
-        };
-      }
-
-      const response = await ai.models.generateContent({
-        model: chatModel,
-        contents: formattedContents,
-        config: Object.keys(config).length > 0 ? config : undefined
-      });
-
-      res.json({ text: response.text });
-    } catch (error: any) {
-      console.error("Gemini API error in /api/chat:", error);
-      res.status(500).json({ error: error.message || "Failed to generate content from Gemini" });
-    }
-  });
-
-  // API Router to generate standard genome compliance reviews or audit reports dynamically
-  app.post("/api/analyze-genome", async (req, res) => {
-    try {
-      const { name, genome } = req.body;
-      const ai = getAi();
-      const prompt = `You are the Compliance Notary Custodian AI for the Project Genome Ledger platform.
-Review the following newly generated AI Agent parameters and genome configuration. Provide a highly professional, dense, and objective compliance report (maximum 180 words) in Markdown.
-The report must include:
-1. SECURITY SCORE (A, B, C, D, or F) as a prominent badge.
-2. DETECTED RISK VECTORS (evaluate safety rules, model choices, and platform permissions).
-3. KEY RECOMMENDATIONS for deployment into VEKLM or target environments.
-
-Agent Name: "${name}"
-Genome Payload:
-${JSON.stringify(genome, null, 2)}
-`;
-
-      const response = await ai.models.generateContent({
-        model: "gemini-2.5-flash",
-        contents: prompt
-      });
-
-      res.json({ report: response.text });
-    } catch (error: any) {
-      console.error("Compliance analyzer error:", error);
-      res.status(500).json({ error: error.message || "Failed to analyze agent genome payload" });
-    }
-  });
-
-  // Simple health check endpoint
-  app.get("/api/health", (req, res) => {
-    res.json({ status: "ok", timestamp: new Date().toISOString() });
-  });
+  app.use(studioRoutes);
 
   // Vite middleware setup
   if (process.env.NODE_ENV !== "production") {
