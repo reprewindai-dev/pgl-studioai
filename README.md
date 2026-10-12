@@ -23,23 +23,38 @@ To work against a local Genome Ledger, run gnomledger on port 8001 and set
 `PGL_BACKEND_URL=http://127.0.0.1:8001` (the default). `npm run dev` forwards `/api/v1`,
 `/health` and `/.well-known/*` to it.
 
-## Deploy on Vercel
+## Run in the Veklom Docker stack
 
-Studio's server routes live in `lib/studioServer.ts`. `api/index.ts` runs them as one Vercel
-Function, and `vercel.json` routes `/api/v1/*`, `/health`, `/.well-known/pgl-signing-key`,
-`/.well-known/x402.json`, `/api/chat`, `/api/analyze-genome` and `/api/health` to it. The UI is
-the static Vite build.
+Veklom runs on Docker Desktop behind a Cloudflare tunnel. Add Studio to the stack that runs
+`gnomledger-api` (for example `veklom-capability-os-rc1`), on the same Docker network:
 
-Set these in the Vercel project (Settings → Environment Variables):
+```yaml
+  pgl-studio:
+    build: ../pgl-studioai          # path to this repository
+    restart: unless-stopped
+    environment:
+      PGL_BACKEND_URL: http://gnomledger-api:8001
+      PGL_STUDIO_API_KEY: ${PGL_STUDIO_API_KEY}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+```
 
-| Variable | Value |
-|---|---|
-| `PGL_BACKEND_URL` | The Genome Ledger API, e.g. `https://pgl.veklom.com` |
-| `PGL_STUDIO_API_KEY` | A key issued to Studio on the gnomledger account (see gnomledger `docs/vercel-deploy.md`) |
-| `GEMINI_API_KEY` | Optional: the "analyze genome" and chat helpers |
+The image runs `server.ts` on port 3000. It serves the UI and forwards `/api/v1/*`, `/health`
+and `/.well-known/*` to Genome Ledger, adding `PGL_STUDIO_API_KEY` on the server so the key
+never reaches the browser.
 
-Leave `VITE_PGL_BOOTSTRAP_TOKEN` unset in deployed environments. It is compiled into the
-browser bundle and only works against an empty local database.
+Issue Studio its own key once, with the Capability OS runtime key, so Studio's writes are
+attributed to `pgl-studio`:
 
-Studio has no login: whoever can open it acts with `PGL_STUDIO_API_KEY`. Protect the
-deployment (Vercel Deployment Protection, or Cloudflare Access in front of the domain).
+```sh
+curl -X POST https://pgl.veklom.com/api/v1/admin/accounts/1/keys \
+  -H "x-api-key: <PGL_LEDGER_API_KEY>" -H "content-type: application/json" \
+  -d '{"name":"pgl-studio","role":"admin","scopes":["*"]}'
+```
+
+Publish it through the tunnel as a hostname pointing at `http://pgl-studio:3000`, and put
+Cloudflare Access in front: Studio has no login, so whoever opens it acts with
+`PGL_STUDIO_API_KEY`. Leave `VITE_PGL_BOOTSTRAP_TOKEN` unset in the stack; it is compiled into
+the browser bundle and only works against an empty local database.
+
+`api/index.ts` and `vercel.json` run the same server routes as a Vercel Function for the
+existing Vercel preview project; they are not part of the Docker deployment.

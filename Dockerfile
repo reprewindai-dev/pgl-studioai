@@ -12,7 +12,7 @@ FROM node:20-alpine
 WORKDIR /app
 ENV NODE_ENV=production
 ENV PORT=3000
-ENV PGL_BACKEND_URL=http://gnomledger:8001
+ENV PGL_BACKEND_URL=http://gnomledger-api:8001
 COPY package*.json ./
 RUN npm ci --omit=dev && npm cache clean --force
 COPY --from=build /app/dist ./dist
